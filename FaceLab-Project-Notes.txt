@@ -1,0 +1,254 @@
+FACELAB
+Face Image Compression Using Singular Value Decomposition
+
+PROJECT OVERVIEW
+
+FaceLab is a local desktop application for exploring how singular value
+decomposition (SVD) approximates an image. It displays the original beside
+reconstructions at ranks 100, 50, 25, 10, and 5. Comparing these outputs shows
+how broad facial structure and fine detail are affected as fewer components
+are retained. The software can also process other supported images.
+
+Research question
+How does the number of retained singular values affect reconstruction quality,
+visible detail, and the storage needed for the SVD factors?
+
+Objectives
+- Represent a grayscale or color photograph as pixel matrices.
+- Decompose each channel once and reuse its factors at five ranks.
+- Compare reconstructed images visually and numerically.
+- Explain the relationship between retained rank, approximation error, and
+  storage requirements.
+- Explore optional resizing, smoothing, and rank optimization separately.
+
+MATHEMATICAL CONCEPT
+
+An image channel is a matrix A with m rows and n columns. Grayscale uses one
+matrix. Color uses separate red, green, and blue matrices. Let p = min(m, n).
+The reduced singular value decomposition is
+
+    A = U @ Sigma @ Vt
+
+U has shape m x p, Sigma is a p x p diagonal matrix, and Vt has shape p x n.
+Sigma contains nonnegative singular values s[0], ..., s[p-1] in descending
+order. The squared singular values are eigenvalues of A.T @ A, and the right
+singular vectors are the corresponding eigenvectors.
+
+The rank-r approximation retains the first r singular values and vectors:
+
+    A_r = U_r @ diag(s_r) @ Vt_r
+        = sum(s[i] * outer(U[:, i], Vt[i, :]) for i in range(r))
+
+U_r is m x r, s_r contains r diagonal values, and Vt_r is r x n.
+Every reconstruction still has m x n pixels. Lower rank means fewer retained
+components and usually more visible loss of fine detail.
+
+Before rounding or clipping:
+
+    Squared Frobenius error = sum(s[i]**2 for i >= r)
+    Retained energy (%) = 100 * sum(s[:r]**2) / sum(s**2)
+
+The rank-r SVD reconstruction minimizes Frobenius error among matrices of
+rank at most r. The gallery quality measurement is calculated after the
+reconstruction is converted back to valid pixel values.
+
+    MSE = mean((reference_pixel - reconstructed_pixel)**2)
+    PSNR = 10 * log10(255**2 / MSE), in dB
+
+Higher PSNR indicates closer pixel agreement. Exact matches have zero MSE
+and are shown as exact matches instead of a finite PSNR.
+
+Key Python operations
+
+    U, s, Vt = svd(A, full_matrices=False)
+    A_r = (U[:, :r] * s[:r]) @ Vt[:r, :]
+    pixels = np.clip(np.rint(A_r), 0, 255).astype(np.uint8)
+
+The multiplication by s[:r] scales the columns of U_r. This gives the same
+result as multiplying by the diagonal matrix without allocating it.
+
+APPLICATION FEATURES
+
+1. Image upload and grayscale or color processing.
+2. Six-image gallery with the original and ranks 100, 50, 25, 10, and 5.
+3. One SVD per channel, reused to generate all five reconstructions.
+4. Clickable thumbnails and Expand buttons on every image. The viewer
+   supports zoom, fit to window, 100% actual pixels, and drag-to-pan.
+5. PSNR and encoded SVD factor size on each result card.
+6. SVD formulas and code panel with equations, dimensions for the loaded
+   image, and source code from backend.py.
+7. Full-resolution PNG export for individual reconstructions.
+8. A labeled comparison sheet for presentations and reports.
+9. Background processing so the desktop interface can stay responsive.
+10. Actual rank labels when the requested rank exceeds min(m, n).
+11. Local processing and an optional browser interface.
+
+ARCHITECTURE AND DATA FLOW
+
+    main.py starts the desktop application
+        -> desktop.py accepts the image and color mode
+        -> backend.py decodes the image and builds pixel matrices
+        -> SciPy computes SVD once for each channel
+        -> NumPy reconstructs the five ranks using the same factors
+        -> backend.py measures quality and encodes the factor archives
+        -> desktop.py displays results and handles inspection and exports
+
+Files and responsibilities
+
+main.py
+    Entry point and dependency checks. The desktop gallery opens by default.
+
+desktop.py
+    Tkinter interface, file picker, background worker, gallery, zoom viewer,
+    formulas panel, and export controls.
+
+backend.py
+    Image preparation, matrix decomposition, reconstruction, PSNR and error
+    calculations, NPZ factor encoding, and optional numerical methods.
+
+advanced_desktop.py
+    Separate analysis interface for resizing, smoothing, and rank optimization.
+
+app.py, launch.py, and templates/
+    Optional local browser interface.
+
+test_*.py
+    Automated checks for dimensions, rank limits, reconstruction, factor
+    recovery, and the extended numerical methods.
+
+Technology
+    Python for application logic
+    Tkinter for the desktop interface
+    Pillow for image decoding, display, and PNG export
+    NumPy for matrix and pixel operations
+    SciPy for SVD and numerical methods
+
+STORAGE AND COMPRESSION
+
+For one channel, the original matrix contains m*n pixel values. The retained
+factors contain m*r + r + r*n = r*(m+n+1) values. Multiply both counts by the
+number of channels for the color case.
+
+Pixels use one byte each as uint8. The stored factors use four bytes per
+value as float32 before encoding. FaceLab displays the actual encoded NPZ
+factor size. The exported PNG contains reconstructed pixels, so its size is
+a separate measurement. The size of an uploaded JPEG or PNG is also a
+separate measurement because it is already encoded.
+
+Worked theoretical example
+For a 256 x 256 grayscale image at rank 10, the original matrix contains
+65,536 pixel values. The factors contain 10*(256+256+1) = 5,130 values.
+That is 20,520 bytes of float32 factors before encoding, compared with
+65,536 bytes of raw uint8 pixels. The measured NPZ size depends on encoding.
+
+EXTENDED MATHEMATICAL METHODS
+
+These experiments are available in the separate analysis interface. The main
+five-rank gallery compares reconstructions of the same prepared image.
+
+Rank optimization
+    Fit a continuous exponential model to normalized squared SVD error.
+    Combine this model with a theoretical factor-storage penalty:
+
+        E_hat(x) = a * exp(-b*x)
+        R(x) = 4*x*(m+n+1)/(m*n)
+        J_hat(x) = E_hat(x) + lambda*R(x)
+        J_hat'(x) = -a*b*exp(-b*x) + lambda*4*(m+n+1)/(m*n)
+        J_hat''(x) = a*b*b*exp(-b*x)
+
+    The continuous model illustrates how derivatives locate a minimum.
+    Check the valid domain and compare actual costs across integer ranks
+    to obtain the final recommendation. A weak model fit can produce a
+    different estimate from the measured integer minimum.
+
+Area-average resizing
+    Each output pixel averages intensity over its source footprint R:
+
+        I_R = integral over R of f(x,y) dx dy / area(R)
+
+    The implementation treats input pixels as constant over their cells
+    and weights each contribution by its overlap with the output footprint.
+    Show the source values, overlap weights, and output value before rounding.
+
+Heat-equation denoising
+    Add reproducible synthetic noise to a known reference and smooth it
+    by solving the two-dimensional heat equation:
+
+        u_t = alpha * (u_xx + u_yy)
+        u_new = u + mu * (north + south + east + west - 4*u)
+
+    With unit pixel spacing, mu = alpha*dt. The explicit scheme uses
+    mu = 0.2, within its stability bound of 0.25, and zero-flux boundaries.
+    Compare clean, noisy, smoothed, and reconstructed images against the
+    clean reference. Strong diffusion can remove genuine image detail.
+
+EXPERIMENT AND DEMONSTRATION
+
+1. Run python main.py.
+2. Choose a detailed face photograph with at least 100 pixels on each side.
+3. Select grayscale or color and keep that choice fixed for the comparison.
+4. Click Compare ranks. Use the same input image for all five ranks.
+5. Export the comparison sheet.
+6. Open the same eye, hair, or textured region at 100% in several results.
+7. Record the actual rank, PSNR, encoded factor size, and visible changes.
+8. Choose a rank for the tested image and explain the quality-storage trade-off.
+
+Results table to fill with measurements from your own run
+
+Actual rank | PSNR (dB) | NPZ factor size | Visible detail
+100         |           |                 |
+50          |           |                 |
+25          |           |                 |
+10          |           |                 |
+5           |           |                 |
+
+Discuss why the best rank can change with image content. Very small images
+may limit the available ranks, and the backend accepts up to 20 million
+pixels. Larger images take more time and memory to decompose. Compare visual
+detail at equal magnification because small previews can conceal differences.
+
+SUGGESTED PPT SEQUENCE
+
+1. Project title and research question.
+2. Image representation with a photograph and a small pixel matrix.
+3. SVD decomposition and the rank-r reconstruction formula.
+4. System architecture and reuse of one decomposition per channel.
+5. Application features and the exported five-rank comparison.
+6. Same-region close-ups and a table of measured PSNR and factor sizes.
+7. Optional experiments in rank optimization, resizing, and diffusion.
+8. Conclusion supported by your photograph and measurements.
+
+SUGGESTED REPORT STRUCTURE
+
+Abstract
+    Summarize the problem, method, application, and observed results.
+
+Introduction and objectives
+    Explain the reason for studying a quality-storage trade-off in images.
+
+Mathematical background
+    Describe pixel matrices, SVD, eigenvalue relationships, truncation,
+    error, retained energy, PSNR, and storage accounting.
+
+System architecture and implementation
+    Include the data-flow diagram, file responsibilities, and key code.
+
+Experimental procedure
+    Record the input dimensions, processing mode, tested ranks, and how
+    quality and storage were measured.
+
+Results and discussion
+    Include the labeled gallery, matched close-ups, and measurements.
+    Explain where visible detail changes and support your selected rank.
+
+Extended methods
+    If demonstrated, include the optimization curve, one worked resizing
+    calculation, and a controlled denoising comparison.
+
+Limitations and conclusion
+    Discuss rank limits, computational cost, dependence on image content,
+    and the distinction between factor storage and reconstructed image files.
+
+Appendix
+    Include the core reconstruction code, storage calculation, and run
+    instructions. Run automated checks with python -m unittest -v.

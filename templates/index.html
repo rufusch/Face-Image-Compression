@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#d3e2f8">
+<title>FaceLab — SVD Image Studio</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='studio.css') }}">
+<script defer src="{{ url_for('static', filename='studio.js') }}"></script>
+</head>
+<body>
+<div class="shell">
+<header class="nav">
+<a class="brand" href="#" aria-label="FaceLab home"><span class="mark" aria-hidden="true">▦</span> FaceLab</a>
+<nav aria-label="Main navigation">
+<a class="nav-link" href="#method">The method</a>
+<button class="nav-button" id="archive-trigger" type="button">Open archive <span aria-hidden="true">↗</span></button>
+<a class="nav-start" href="#studio">Open studio <span aria-hidden="true">↘</span></a>
+</nav>
+</header>
+<main>
+<section class="hero" aria-labelledby="title">
+<div class="hero-copy">
+<div class="accent" aria-hidden="true"></div>
+<h1 id="title">Every face<br>is a <em>matrix.</em></h1>
+<p>See what singular value decomposition keeps, and what it leaves behind. Compare five ranks on one photograph.</p>
+<a class="button dark" href="#studio">Try the comparison <span aria-hidden="true">↘</span></a>
+</div>
+<figure class="hero-art">
+<img src="{{ url_for('static', filename='hero-portrait.jpg') }}" alt="Stock portrait of a woman facing the camera">
+</figure>
+</section>
+<section class="facts" aria-label="Studio at a glance">
+<div><strong>400</strong><span>Olivetti sample faces</span></div>
+<div><strong>5</strong><span>Ranks per comparison</span></div>
+<div><strong>1</strong><span>Decomposition per channel</span></div>
+<div><strong>PNG</strong><span>Full-resolution export</span></div>
+</section>
+<section class="studio" id="studio" aria-labelledby="studio-title">
+<div class="studio-head"><h2 id="studio-title">Compression studio</h2><button id="save-sheet" class="button outline" disabled>Save comparison <span aria-hidden="true">↓</span></button></div>
+<div class="workbench">
+<form class="controls" id="compare-form">
+<label for="sample">Sample face</label>
+<select id="sample"><option value="">Choose a sample face</option></select>
+<label for="image">Or upload a picture</label>
+<input id="image" type="file" accept="image/*">
+{% if hosted %}<p class="status">Hosted uploads must fit within 4 MB. For large photos, set Maximum side to 1024 pixels or less.</p>{% endif %}
+<label for="mode">Image mode</label>
+<select id="mode" name="mode"><option value="gray">Grayscale</option><option value="color">Color</option></select>
+<details>
+<summary>Processing options</summary>
+<label for="size">Maximum side in pixels</label><input id="size" name="max_side" type="number" min="1" placeholder="Original dimensions">
+<label for="noise">Added noise</label><input id="noise" name="noise_std" type="number" min="0" max="100" value="0">
+<label for="steps">Smoothing steps</label><input id="steps" name="denoise_steps" type="number" min="0" max="200" value="0">
+<label for="weight">Rank storage penalty</label><input id="weight" name="storage_weight" type="number" min="0.001" step="0.001" value="0.1">
+</details>
+<button class="button orange compare" type="submit" id="compare" disabled>Compare ranks <span aria-hidden="true">→</span></button>
+<p id="status" class="status" role="status" aria-live="polite">Choose an image to begin.</p>
+</form>
+<div class="gallery" id="gallery" aria-label="Rank comparison"><div class="gallery-empty"><strong>No image selected</strong><p>Choose a sample face or upload a picture to compare SVD ranks.</p></div></div>
+</div>
+<details class="analysis" id="svd-reference">
+<summary>SVD formulas &amp; code</summary>
+<div class="svd-reference">
+<dl>
+<dt>Decompose each image channel</dt>
+<dd><code>A = UΣVᵀ</code> splits the pixel matrix into singular vectors and singular values.</dd>
+<dt>Reconstruct at rank <var>r</var></dt>
+<dd><code>Aᵣ = Uᵣ diag(sᵣ) Vᵣᵀ</code> keeps the first <var>r</var> components. The squared error before rounding is the sum of the discarded squared singular values.</dd>
+<dt>Recover the archive reference</dt>
+<dd><code>A = round_and_clip(Aᵣ) + E</code>, where <code>E</code> is the signed pixel difference stored in a new archive.</dd>
+</dl>
+<details><summary>Compression source · backend.py</summary><pre><code>{{ svd_source }}</code></pre></details>
+<details><summary>Archive recovery source · backend.py</summary><pre><code>{{ archive_source }}</code></pre></details>
+<div id="analysis" hidden><div id="analysis-content"></div></div>
+</div>
+</details>
+</section>
+<section class="method" id="method" aria-label="SVD and archive recovery">
+<article class="method-dark"><h2>From pixels to factors</h2><p>Keep the largest singular values to retain the main structure. Smaller ranks use fewer factors and lose more fine detail.</p><code>Aᵣ = Uᵣ Σᵣ Vᵣᵀ</code></article>
+<div class="method-image" aria-hidden="true"><img src="{{ url_for('static', filename='method-portrait.jpg') }}" alt="" loading="lazy"></div>
+<article class="method-blue"><h2>Reopen the original</h2><p>Save an archive to keep the selected rank and its pixel differences. Reopen it to recover the gallery reference exactly.</p><button class="button outline" id="archive-method" type="button">Open SVD archive ↗</button></article>
+</section>
+</main>
+<footer><span class="brand"><span class="mark" aria-hidden="true">▦</span> FaceLab</span><a href="https://scikit-learn.org/stable/datasets/real_world.html#the-olivetti-faces-dataset">Olivetti dataset</a></footer>
+</div>
+<dialog id="viewer" aria-labelledby="viewer-title">
+<div class="dialog-head"><h2 id="viewer-title">Image preview</h2><form method="dialog"><button class="button outline" aria-label="Close viewer">✕</button></form></div>
+<div class="viewer-toolbar"><button id="fit" class="button outline">Fit</button><button id="actual" class="button outline">100%</button><button id="zoom-out" class="button outline" aria-label="Zoom out">−</button><button id="zoom-in" class="button outline" aria-label="Zoom in">+</button><a id="viewer-download" class="button dark" download>Save PNG ↓</a></div>
+<div class="viewport" id="viewport"><img id="viewer-image" alt=""></div>
+</dialog>
+<dialog id="archive" aria-labelledby="archive-title">
+<div class="dialog-head"><h2 id="archive-title">Open SVD archive</h2><form method="dialog"><button class="button outline" aria-label="Close archive dialog">✕</button></form></div>
+<form id="archive-form">
+<p>Choose a FaceLab .npz file. Archives with saved pixel differences recover the gallery original. Earlier archives open at their saved rank.</p>
+<label for="archive-file">SVD archive</label><input id="archive-file" name="archive" type="file" accept=".npz" required>
+<button id="archive-submit" class="button orange">Open archive →</button>
+<p id="archive-status" class="status" role="status"></p>
+</form>
+</dialog>
+</body>
+</html>
